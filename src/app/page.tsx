@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Wifi, WifiOff, Cpu, Zap, HardDrive, Activity, Clock, AlertCircle, CheckCircle, Chip } from 'lucide-react'
+import { Wifi, WifiOff, Cpu, Zap, HardDrive, Activity, Clock, AlertCircle, CheckCircle, HardDrive as Memory } from 'lucide-react'
 
 interface ESP32Data {
   id: string
@@ -244,7 +244,7 @@ export default function ESP32Dashboard() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Memory Tersedia</CardTitle>
-                    <Chip className="w-4 h-4" />
+                    <Memory className="w-4 h-4" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{esp32Data.freeHeap} KB</div>
