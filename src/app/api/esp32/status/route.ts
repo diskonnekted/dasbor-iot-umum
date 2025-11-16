@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
 export async function GET() {
+  console.log('📥 ESP32 Status Request received')
+  
   try {
     // Get the most recently active device
+    console.log('🔍 Fetching most recently active device...')
     const device = await db.eSP32Device.findFirst({
       where: { isActive: true },
       orderBy: { lastSeen: 'desc' },
@@ -17,6 +20,7 @@ export async function GET() {
     })
 
     if (!device) {
+      console.log('⚠️ No active device found, returning demo data')
       // Return demo data if no device found
       return NextResponse.json({
         id: 'ESP32-DEMO-001',
@@ -36,12 +40,21 @@ export async function GET() {
       })
     }
 
+    console.log('✅ Device found:', device.chipId)
+
     // Check if device is still connected (last seen within 30 seconds)
     const lastSeenTime = device.lastSeen.getTime()
     const currentTime = new Date().getTime()
     const timeDiff = currentTime - lastSeenTime
     
     const connected = timeDiff <= 30000 // 30 seconds timeout
+
+    console.log('📊 Device connection status:', {
+      chipId: device.chipId,
+      connected,
+      lastSeen: device.lastSeen.toISOString(),
+      timeDiff: timeDiff + 'ms'
+    })
 
     // Get latest data record
     const latestData = device.dataRecords[0]
@@ -68,12 +81,17 @@ export async function GET() {
       }))
     }
 
+    console.log('✅ Status response prepared')
     return NextResponse.json(responseData)
 
   } catch (error) {
-    console.error('Error fetching ESP32 status:', error)
+    console.error('💥 CRITICAL ERROR fetching ESP32 status:', error)
+    console.error('Error stack:', (error as Error).stack)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error: ' + (error as Error).message,
+        timestamp: new Date().toISOString()
+      },
       { status: 500 }
     )
   }

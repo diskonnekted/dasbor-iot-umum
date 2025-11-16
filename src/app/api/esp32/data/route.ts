@@ -30,13 +30,17 @@ const generateDefaultPins = (deviceId: string) => {
 }
 
 export async function POST(request: NextRequest) {
+  console.log('📥 ESP32 Data Request received')
+  
   try {
     const body = await request.json()
+    console.log('📦 Request body:', JSON.stringify(body, null, 2))
     
     // Validate required fields
     const requiredFields = ['chipId', 'mac', 'ip']
     for (const field of requiredFields) {
       if (!body[field]) {
+        console.log(`❌ Missing required field: ${field}`)
         return NextResponse.json(
           { error: `Field ${field} is required` },
           { status: 400 }
@@ -44,44 +48,146 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    console.log('🔍 Looking for device with chipId:', body.chipId)
+    
     // Find or create ESP32 device
     let device = await db.eSP32Device.findUnique({
       where: { chipId: body.chipId }
     })
 
     if (!device) {
-      // Create new device
-      device = await db.eSP32Device.create({
-        data: {
-          chipId: body.chipId,
-          macAddress: body.mac,
-          name: body.name || `ESP32-${body.chipId}`,
-          lastSeen: new Date(),
-        }
-      })
+      console.log('🆕 Creating new device...')
+      try {
+        // Create new device
+        device = await db.eSP32Device.create({
+          data: {
+            chipId: body.chipId,
+            macAddress: body.mac,
+            name: body.name || `ESP32-${body.chipId}`,
+            lastSeen: new Date(),
+          }
+        })
+        console.log('✅ Device created successfully with ID:', device.id)
 
-      // Initialize pins for new device
-      const pins = generateDefaultPins(device.id)
-      await db.eSP32Pin.createMany({
-        data: pins
-      })
+        // Initialize pins for new device
+        const pins = generateDefaultPins(device.id)
+        await db.eSP32Pin.createMany({
+          data: pins
+        })
+        console.log('📌 Default pins created')
+      } catch (createError) {
+        console.error('❌ Error creating device:', createError)
+        return NextResponse.json(
+          { error: 'Failed to create device: ' + (createError as Error).message },
+          { status: 500 }
+        )
+      }
     } else {
-      // Update existing device
-      device = await db.eSP32Device.update({
-        where: { id: device.id },
-        data: {
-          macAddress: body.mac,
-          lastSeen: new Date(),
-          isActive: true
-        }
-      })
+      console.log('🔄 Updating existing device...')
+      try {
+        // Update existing device
+        device = await db.eSP32Device.update({
+          where: { id: device.id },
+          data: {
+            macAddress: body.mac,
+            lastSeen: new Date(),
+            isActive: true
+          }
+        })
+        console.log('✅ Device updated successfully')
+      } catch (updateError) {
+        console.error('❌ Error updating device:', updateError)
+        return NextResponse.json(
+          { error: 'Failed to update device: ' + (updateError as Error).message },
+          { status: 500 }
+        )
+      }
     }
 
-    // Create data record
-    const dataRecord = await db.eSP32Data.create({
-      data: {
-        deviceId: device.id,
+    console.log('📊 Creating data record...')
+    try {
+      // Create data record
+      const dataRecord = await db.eSP32Data.create({
+        data: {
+          deviceId: device.id,
+          ip: body.ip,
+          flashSize: body.flashSize || 0,
+          freeHeap: body.freeHeap || 0,
+          cpuFreq: body.cpuFreq || 0,
+          sdkVersion: body.sdkVersion || '',
+          coreVersion: body.coreVersion || '',
+          wifiRssi: body.wifiRssi || 0,
+          uptime: body.uptime || 0,
+        }
+      })
+      console.log('✅ Data record created')
+    } catch (dataError) {
+      console.error('❌ Error creating data record:', dataError)
+      return NextResponse.json(
+        { error: 'Failed to create data record: ' + (dataError as Error).message },
+        { status: 500 }
+      )
+    }
+
+    // Update pin states if provided
+    if (body.pins && Array.isArray(body.pins)) {
+      console.log('📌 Updating pin states for', body.pins.length, 'pins')
+      try {
+        for (const pin of body.pins) {
+          await db.eSP32Pin.upsert({
+            where: {
+              deviceId_pinNumber: {
+                deviceId: device.id,
+                pinNumber: pin.number
+              }
+            },
+            update: {
+              mode: pin.mode || 'INPUT',
+              value: pin.value || 0,
+              available: pin.available !== undefined ? pin.available : true,
+              timestamp: new Date()
+            },
+            create: {
+              deviceId: device.id,
+              pinNumber: pin.number,
+              mode: pin.mode || 'INPUT',
+              value: pin.value || 0,
+              available: pin.available !== undefined ? pin.available : true,
+            }
+          })
+        }
+        console.log('✅ Pin states updated')
+      } catch (pinError) {
+        console.error('❌ Error updating pins:', pinError)
+        return NextResponse.json(
+          { error: 'Failed to update pins: ' + (pinError as Error).message },
+          { status: 500 }
+        )
+      }
+    }
+
+    // Get updated device data with pins
+    console.log('🔍 Fetching updated device data...')
+    try {
+      const updatedDevice = await db.eSP32Device.findUnique({
+        where: { id: device.id },
+        include: {
+          pinStates: true,
+          dataRecords: {
+            orderBy: { timestamp: 'desc' },
+            take: 1
+          }
+        }
+      })
+
+      // Format response data
+      const responseData = {
+        id: updatedDevice?.chipId || body.chipId,
+        connected: true,
+        lastSeen: updatedDevice?.lastSeen?.toISOString() || new Date().toISOString(),
         ip: body.ip,
+        mac: body.mac,
+        chipId: body.chipId,
         flashSize: body.flashSize || 0,
         freeHeap: body.freeHeap || 0,
         cpuFreq: body.cpuFreq || 0,
@@ -89,94 +195,49 @@ export async function POST(request: NextRequest) {
         coreVersion: body.coreVersion || '',
         wifiRssi: body.wifiRssi || 0,
         uptime: body.uptime || 0,
+        pins: updatedDevice?.pinStates.map(pin => ({
+          number: pin.pinNumber,
+          available: pin.available,
+          mode: pin.mode,
+          value: pin.value
+        })) || []
       }
-    })
 
-    // Update pin states if provided
-    if (body.pins && Array.isArray(body.pins)) {
-      for (const pin of body.pins) {
-        await db.eSP32Pin.upsert({
-          where: {
-            deviceId_pinNumber: {
-              deviceId: device.id,
-              pinNumber: pin.number
-            }
-          },
-          update: {
-            mode: pin.mode || 'INPUT',
-            value: pin.value || 0,
-            available: pin.available !== undefined ? pin.available : true,
-            timestamp: new Date()
-          },
-          create: {
-            deviceId: device.id,
-            pinNumber: pin.number,
-            mode: pin.mode || 'INPUT',
-            value: pin.value || 0,
-            available: pin.available !== undefined ? pin.available : true,
-          }
-        })
+      console.log('✅ ESP32 Data processed successfully:', {
+        timestamp: new Date().toISOString(),
+        chipId: body.chipId,
+        ip: body.ip,
+        connected: true
+      })
+
+      // Emit WebSocket event to all connected clients
+      if (io) {
+        io.to('esp32-monitor').emit('esp32-update', responseData)
+        console.log('📡 WebSocket event emitted for ESP32 update')
       }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Data received successfully',
+        timestamp: new Date().toISOString()
+      })
+
+    } catch (fetchError) {
+      console.error('❌ Error fetching updated device:', fetchError)
+      return NextResponse.json(
+        { error: 'Failed to fetch updated device: ' + (fetchError as Error).message },
+        { status: 500 }
+      )
     }
-
-    // Get updated device data with pins
-    const updatedDevice = await db.eSP32Device.findUnique({
-      where: { id: device.id },
-      include: {
-        pinStates: true,
-        dataRecords: {
-          orderBy: { timestamp: 'desc' },
-          take: 1
-        }
-      }
-    })
-
-    // Format response data
-    const responseData = {
-      id: updatedDevice?.chipId || body.chipId,
-      connected: true,
-      lastSeen: updatedDevice?.lastSeen?.toISOString() || new Date().toISOString(),
-      ip: body.ip,
-      mac: body.mac,
-      chipId: body.chipId,
-      flashSize: body.flashSize || 0,
-      freeHeap: body.freeHeap || 0,
-      cpuFreq: body.cpuFreq || 0,
-      sdkVersion: body.sdkVersion || '',
-      coreVersion: body.coreVersion || '',
-      wifiRssi: body.wifiRssi || 0,
-      uptime: body.uptime || 0,
-      pins: updatedDevice?.pinStates.map(pin => ({
-        number: pin.pinNumber,
-        available: pin.available,
-        mode: pin.mode,
-        value: pin.value
-      })) || []
-    }
-
-    console.log('ESP32 Data Received:', {
-      timestamp: new Date().toISOString(),
-      chipId: body.chipId,
-      ip: body.ip,
-      connected: true
-    })
-
-    // Emit WebSocket event to all connected clients
-    if (io) {
-      io.to('esp32-monitor').emit('esp32-update', responseData)
-      console.log('WebSocket event emitted for ESP32 update')
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: 'Data received successfully',
-      timestamp: new Date().toISOString()
-    })
 
   } catch (error) {
-    console.error('Error processing ESP32 data:', error)
+    console.error('💥 CRITICAL ERROR processing ESP32 data:', error)
+    console.error('Error stack:', (error as Error).stack)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error: ' + (error as Error).message,
+        timestamp: new Date().toISOString()
+      },
       { status: 500 }
     )
   }
