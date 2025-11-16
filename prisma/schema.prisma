@@ -82,3 +82,16 @@ model ESP32Pin {
   @@unique([deviceId, pinNumber])
   @@map("esp32_pins")
 }
+
+model Firmware {
+  id        String   @id @default(cuid())
+  deviceId  String
+  filename  String
+  version   String
+  filepath  String
+  size      Int
+  uploadedAt DateTime @default(now())
+  isActive  Boolean  @default(false)
+  
+  @@map("firmware")
+}
