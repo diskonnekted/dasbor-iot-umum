@@ -30,3 +30,55 @@ model Post {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model ESP32Device {
+  id          String   @id @default(cuid())
+  chipId      String   @unique
+  macAddress  String   @unique
+  name        String?
+  isActive    Boolean  @default(true)
+  lastSeen    DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  dataRecords ESP32Data[]
+  pinStates   ESP32Pin[]
+  
+  @@map("esp32_devices")
+}
+
+model ESP32Data {
+  id          String   @id @default(cuid())
+  deviceId    String
+  ip          String
+  flashSize   Int
+  freeHeap    Int
+  cpuFreq     Int
+  sdkVersion  String
+  coreVersion String
+  wifiRssi    Int
+  uptime      Int
+  timestamp   DateTime @default(now())
+  
+  // Relations
+  device ESP32Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  
+  @@map("esp32_data")
+}
+
+model ESP32Pin {
+  id        String   @id @default(cuid())
+  deviceId  String
+  pinNumber Int
+  mode      String
+  value     Int?
+  available Boolean  @default(true)
+  timestamp DateTime @default(now())
+  
+  // Relations
+  device ESP32Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  
+  @@unique([deviceId, pinNumber])
+  @@map("esp32_pins")
+}
