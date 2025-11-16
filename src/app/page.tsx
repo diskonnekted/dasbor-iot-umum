@@ -351,29 +351,36 @@ export default function ESP32Dashboard() {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                    {esp32Data.pins.map((pin) => (
-                      <div
-                        key={pin.number}
-                        className={`p-3 rounded-lg border ${
-                          pin.available 
-                            ? 'bg-green-50 border-green-200' 
-                            : 'bg-gray-50 border-gray-200'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-semibold text-sm">GPIO{pin.number}</span>
-                          <div className={`w-2 h-2 rounded-full ${
-                            pin.available ? 'bg-green-500' : 'bg-gray-400'
-                          }`}></div>
+                    {esp32Data.pins && esp32Data.pins.length > 0 ? (
+                      esp32Data.pins.map((pin) => (
+                        <div
+                          key={pin.number}
+                          className={`p-3 rounded-lg border ${
+                            pin.available 
+                              ? 'bg-green-50 border-green-200' 
+                              : 'bg-gray-50 border-gray-200'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-semibold text-sm">GPIO{pin.number}</span>
+                            <div className={`w-2 h-2 rounded-full ${
+                              pin.available ? 'bg-green-500' : 'bg-gray-400'
+                            }`}></div>
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            <div>{pin.mode}</div>
+                            {pin.value !== undefined && (
+                              <div>Value: {pin.value}</div>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-600">
-                          <div>{pin.mode}</div>
-                          {pin.value !== undefined && (
-                            <div>Value: {pin.value}</div>
-                          )}
-                        </div>
+                      ))
+                    ) : (
+                      <div className="col-span-full text-center py-8">
+                        <p className="text-gray-500">Belum ada data pin GPIO</p>
+                        <p className="text-sm text-gray-400 mt-2">Hubungkan ESP32 untuk melihat status pin</p>
                       </div>
-                    ))}
+                    )}
                   </div>
                   <div className="flex items-center gap-4 mt-4 text-sm">
                     <div className="flex items-center gap-2">
